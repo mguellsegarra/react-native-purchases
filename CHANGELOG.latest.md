@@ -1,1 +1,0 @@
-- Replaced `jcenter` with `mavenCentral` (https://github.com/RevenueCat/react-native-purchases/pull/369)

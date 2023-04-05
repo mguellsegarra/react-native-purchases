@@ -8,17 +8,15 @@
 
 @import StoreKit;
 
-typedef void (^PurchaseCompletedBlock)(RCStoreTransaction *, RCCustomerInfo *, NSError *, BOOL);
-typedef void (^StartPurchaseBlock)(PurchaseCompletedBlock);
 
 @interface RNPurchases () <RCPurchasesDelegate>
 
-@property (nonatomic, retain) NSMutableArray<StartPurchaseBlock> *defermentBlocks;
+@property (nonatomic, retain) NSMutableArray<RCDeferredPromotionalPurchaseBlock> *defermentBlocks;
 
 @end
 
 
-NSString *RNPurchasesCustomerInfoUpdatedEvent = @"Purchases-CustomerInfoUpdated";
+NSString *RNPurchasesPurchaserInfoUpdatedEvent = @"Purchases-PurchaserInfoUpdated";
 NSString *RNPurchasesShouldPurchasePromoProductEvent = @"Purchases-ShouldPurchasePromoProduct";
 
 
@@ -29,7 +27,7 @@ NSString *RNPurchasesShouldPurchasePromoProductEvent = @"Purchases-ShouldPurchas
 }
 
 - (NSArray<NSString *> *)supportedEvents {
-    return @[RNPurchasesCustomerInfoUpdatedEvent, RNPurchasesShouldPurchasePromoProductEvent];
+    return @[RNPurchasesPurchaserInfoUpdatedEvent, RNPurchasesShouldPurchasePromoProductEvent];
 }
 
 RCT_EXPORT_MODULE();
@@ -37,17 +35,16 @@ RCT_EXPORT_MODULE();
 RCT_EXPORT_METHOD(setupPurchases:(NSString *)apiKey
                   appUserID:(nullable NSString *)appUserID
                   observerMode:(BOOL)observerMode
-                  userDefaultsSuiteName:(nullable NSString *)userDefaultsSuiteName
-                  usesStoreKit2IfAvailable:(BOOL)usesStoreKit2IfAvailable) {
-    RCPurchases *purchases = [RCPurchases configureWithAPIKey:apiKey
-                                                  appUserID:appUserID
-                                               observerMode:observerMode
-                                      userDefaultsSuiteName:userDefaultsSuiteName
-                                             platformFlavor:self.platformFlavor
-                                      platformFlavorVersion:self.platformFlavorVersion
-                                     usesStoreKit2IfAvailable:usesStoreKit2IfAvailable
-                                          dangerousSettings:nil];
-    purchases.delegate = self;
+                  userDefaultsSuiteName:(nullable NSString *)userDefaultsSuiteName) {
+    [RCPurchases configureWithAPIKey:apiKey
+                           appUserID:appUserID
+                        observerMode:observerMode
+               userDefaultsSuiteName:userDefaultsSuiteName
+                      platformFlavor:self.platformFlavor
+               platformFlavorVersion:self.platformFlavorVersion
+                   dangerousSettings:nil];
+    RCPurchases.sharedPurchases.delegate = self;
+    [RCCommonFunctionality configure];
 }
 
 RCT_EXPORT_METHOD(setAllowSharingStoreAccount:(BOOL)allowSharingStoreAccount) {
@@ -59,6 +56,15 @@ RCT_EXPORT_METHOD(setAllowSharingStoreAccount:(BOOL)allowSharingStoreAccount) {
 
 RCT_EXPORT_METHOD(setFinishTransactions:(BOOL)finishTransactions) {
     [RCCommonFunctionality setFinishTransactions:finishTransactions];
+}
+
+RCT_EXPORT_METHOD(addAttributionData:(NSDictionary *)data
+                  forNetwork:(NSInteger)network
+                  forNetworkUserId:(nullable NSString *)networkUserId) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    [RCCommonFunctionality addAttributionData:data network:network networkUserId:networkUserId];
+#pragma GCC diagnostic pop
 }
 
 RCT_REMAP_METHOD(getOfferings,
@@ -106,8 +112,8 @@ RCT_REMAP_METHOD(purchasePackage,
 RCT_REMAP_METHOD(restoreTransactions,
                  restoreTransactionsWithResolve:(RCTPromiseResolveBlock)resolve
                  reject:(RCTPromiseRejectBlock)reject) {
-    [RCCommonFunctionality restorePurchasesWithCompletionBlock:[self getResponseCompletionBlockWithResolve:resolve
-                                                                                                    reject:reject]];
+    [RCCommonFunctionality restoreTransactionsWithCompletionBlock:[self getResponseCompletionBlockWithResolve:resolve
+                                                                                                       reject:reject]];
 }
 
 RCT_EXPORT_METHOD(syncPurchases) {
@@ -118,6 +124,13 @@ RCT_REMAP_METHOD(getAppUserID,
                  getAppUserIDWithResolve:(RCTPromiseResolveBlock)resolve
                  reject:(RCTPromiseRejectBlock)reject) {
     resolve([RCCommonFunctionality appUserID]);
+}
+
+RCT_EXPORT_METHOD(createAlias:(nullable NSString *)newAppUserID
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    [RCCommonFunctionality createAlias:newAppUserID
+                       completionBlock:[self getResponseCompletionBlockWithResolve:resolve reject:reject]];
 }
 
 RCT_EXPORT_METHOD(logIn:(nonnull NSString *)appUserID
@@ -133,6 +146,25 @@ RCT_REMAP_METHOD(logOut,
     [RCCommonFunctionality logOutWithCompletionBlock:[self getResponseCompletionBlockWithResolve:resolve reject:reject]];
 }
 
+RCT_EXPORT_METHOD(identify:(nullable NSString *)appUserID
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    [RCCommonFunctionality identify:appUserID
+                    completionBlock:[self getResponseCompletionBlockWithResolve:resolve reject:reject]];
+#pragma GCC diagnostic pop
+}
+
+RCT_REMAP_METHOD(reset,
+                 resetWithResolve:(RCTPromiseResolveBlock)resolve
+                 reject:(RCTPromiseRejectBlock)reject) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    [RCCommonFunctionality resetWithCompletionBlock:[self getResponseCompletionBlockWithResolve:resolve reject:reject]];
+#pragma GCC diagnostic pop
+}
+
 RCT_REMAP_METHOD(setDebugLogsEnabled,
                  debugLogsEnabled:(BOOL)enabled) {
     [RCCommonFunctionality setDebugLogsEnabled:enabled];
@@ -143,10 +175,10 @@ RCT_EXPORT_METHOD(setSimulatesAskToBuyInSandbox:(BOOL)simulatesAskToBuyInSandbox
     [RCCommonFunctionality setSimulatesAskToBuyInSandbox:simulatesAskToBuyInSandbox];
 }
 
-RCT_REMAP_METHOD(getCustomerInfo,
-                 customerInfoWithResolve:(RCTPromiseResolveBlock)resolve
+RCT_REMAP_METHOD(getPurchaserInfo,
+                 purchaserInfoWithResolve:(RCTPromiseResolveBlock)resolve
                  reject:(RCTPromiseRejectBlock)reject) {
-    [RCCommonFunctionality getCustomerInfoWithCompletionBlock:[self getResponseCompletionBlockWithResolve:resolve reject:reject]];
+    [RCCommonFunctionality getPurchaserInfoWithCompletionBlock:[self getResponseCompletionBlockWithResolve:resolve reject:reject]];
 }
 
 RCT_EXPORT_METHOD(setAutomaticAppleSearchAdsAttributionCollection:(BOOL)automaticAppleSearchAdsAttributionCollection)
@@ -163,7 +195,7 @@ RCT_REMAP_METHOD(isAnonymous,
 RCT_EXPORT_METHOD(makeDeferredPurchase:(nonnull NSNumber *)callbackID
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    StartPurchaseBlock defermentBlock = [self.defermentBlocks objectAtIndex:[callbackID integerValue]];
+    RCDeferredPromotionalPurchaseBlock defermentBlock = [self.defermentBlocks objectAtIndex:[callbackID integerValue]];
     [RCCommonFunctionality makeDeferredPurchase:defermentBlock
                                 completionBlock:[self getResponseCompletionBlockWithResolve:resolve reject:reject]];
 }
@@ -177,18 +209,19 @@ RCT_EXPORT_METHOD(checkTrialOrIntroductoryPriceEligibility:(NSArray *)products
     }];
 }
 
-RCT_EXPORT_METHOD(invalidateCustomerInfoCache) {
-    [RCCommonFunctionality invalidateCustomerInfoCache];
-}
-
-RCT_REMAP_METHOD(getPromotionalOffer,
-                 getPromotionalOfferForProductIdentifier:(NSString *)productIdentifier
-                 discount:(NSString *)discount
+RCT_REMAP_METHOD(getPaymentDiscount,
+                 getPaymentDiscountForProductIdentifier:(NSString *)productIdentifier
+                 discountIdentifier:(nullable NSString *)discountIdentifier
                  resolve:(RCTPromiseResolveBlock)resolve
                  reject:(RCTPromiseRejectBlock)reject) {
-    [RCCommonFunctionality promotionalOfferForProductIdentifier:productIdentifier
-                                                       discount:discount
-                                                completionBlock:[self getResponseCompletionBlockWithResolve:resolve reject:reject]];
+    [RCCommonFunctionality paymentDiscountForProductIdentifier:productIdentifier
+                                                      discount:discountIdentifier
+                                               completionBlock:[self getResponseCompletionBlockWithResolve:resolve
+                                                                                                    reject:reject]];
+}
+
+RCT_EXPORT_METHOD(invalidatePurchaserInfoCache) {
+    [RCCommonFunctionality invalidatePurchaserInfoCache];
 }
 
 RCT_EXPORT_METHOD(presentCodeRedemptionSheet) {
@@ -296,17 +329,17 @@ RCT_REMAP_METHOD(isConfigured,
 
 #pragma mark -
 #pragma mark Delegate Methods
-- (void)purchases:(RCPurchases *)purchases didReceiveUpdatedCustomerInfo:(RCCustomerInfo *)customerInfo {
-    [self sendEventWithName:RNPurchasesCustomerInfoUpdatedEvent body:customerInfo.dictionary];
+- (void)purchases:(RCPurchases *)purchases didReceiveUpdatedPurchaserInfo:(RCPurchaserInfo *)purchaserInfo {
+    [self sendEventWithName:RNPurchasesPurchaserInfoUpdatedEvent body:purchaserInfo.dictionary];
 }
 
-- (void)purchases:(RCPurchases *)purchases
-readyForPromotedProduct:(RCStoreProduct *)product
-         purchase:(void (^)(void (^ _Nonnull)(RCStoreTransaction * _Nullable, RCCustomerInfo * _Nullable, NSError * _Nullable, BOOL)))startPurchase {
+- (void)         purchases:(RCPurchases *)purchases
+shouldPurchasePromoProduct:(SKProduct *)product
+            defermentBlock:(RCDeferredPromotionalPurchaseBlock)makeDeferredPurchase {
     if (!self.defermentBlocks) {
         self.defermentBlocks = [NSMutableArray array];
     }
-    [self.defermentBlocks addObject:startPurchase];
+    [self.defermentBlocks addObject:makeDeferredPurchase];
     NSInteger position = [self.defermentBlocks count] - 1;
     [self sendEventWithName:RNPurchasesShouldPurchasePromoProductEvent body:@{@"callbackID": @(position)}];
 }
